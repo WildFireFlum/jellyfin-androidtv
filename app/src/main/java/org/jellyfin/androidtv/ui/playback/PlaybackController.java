@@ -24,6 +24,8 @@ import org.jellyfin.androidtv.preference.constant.RefreshRateSwitchingBehavior;
 import org.jellyfin.androidtv.preference.constant.StillWatchingBehavior;
 import org.jellyfin.androidtv.preference.constant.ZoomMode;
 import org.jellyfin.androidtv.ui.InteractionTrackerViewModel;
+import org.jellyfin.androidtv.ui.playback.SubtitleSelection;
+import static org.jellyfin.androidtv.ui.playback.SubtitleSelectionKt.getSeriesSubtitleSelection;
 import org.jellyfin.androidtv.ui.livetv.TvManager;
 import org.jellyfin.androidtv.util.TimeUtils;
 import org.jellyfin.androidtv.util.Utils;
@@ -644,27 +646,36 @@ public class PlaybackController implements PlaybackControllerNotifiable {
         }
 
         // get subtitle info - prefer saved language preference over server default
-        String lastSubtitleLanguage = videoQueueManager.getValue().getLastPlayedSubtitleLanguageIsoCode();
-        if (lastSubtitleLanguage != null) {
-            if (lastSubtitleLanguage.isEmpty()) {
+        SubtitleSelection lastSubtitleSelection = null;
+        if (userPreferences.getValue().get(UserPreferences.Companion.getSubtitlesRememberSelection())
+                && item.getSeriesId() != null) {
+            // Prefer the selection persisted for this series, made in this or a previous session
+            lastSubtitleSelection = getSeriesSubtitleSelection(
+                    userPreferences.getValue(),
+                    item.getSeriesId());
+        }
+        if (lastSubtitleSelection == null)
+            lastSubtitleSelection = videoQueueManager.getValue().getLastPlayedSubtitleSelection();
+
+        if (lastSubtitleSelection != null) {
+            MediaStream requestedStream = mCurrentOptions.getSubtitleStreamIndex() != null
+                    ? getCurrentMediaSource().getMediaStreams().stream()
+                            .filter(stream -> stream.getType() == MediaStreamType.SUBTITLE
+                                    && mCurrentOptions.getSubtitleStreamIndex() == stream.getIndex())
+                            .findFirst().orElse(null)
+                    : null;
+
+            // Find subtitle stream matching the selection, keeping the requested stream if it matches
+            // (e.g. when playback restarts to switch between baked and non-baked subtitles)
+            MediaStream matchingStream = lastSubtitleSelection.findMatchingStream(response.getMediaSource().getMediaStreams());
+            if (requestedStream != null && lastSubtitleSelection.findMatchingStream(List.of(requestedStream)) != null)
+                matchingStream = requestedStream;
+
+            if (lastSubtitleSelection.getDisabled())
                 // User explicitly disabled subtitles
                 mCurrentOptions.setSubtitleStreamIndex(null);
-            } else if (response.getMediaSource().getMediaStreams() != null) {
-                // Find subtitle stream matching saved language, keeping the requested stream if it matches
-                // (e.g. when playback restarts to switch between baked and non-baked subtitles)
-                Integer requestedIndex = mCurrentOptions.getSubtitleStreamIndex();
-                Integer matchingIndex = null;
-                for (MediaStream stream : response.getMediaSource().getMediaStreams()) {
-                    if (stream.getType() == MediaStreamType.SUBTITLE && lastSubtitleLanguage.equals(stream.getLanguage())) {
-                        if (matchingIndex == null) matchingIndex = stream.getIndex();
-                        if (requestedIndex != null && requestedIndex == stream.getIndex()) {
-                            matchingIndex = requestedIndex;
-                            break;
-                        }
-                    }
-                }
-                mCurrentOptions.setSubtitleStreamIndex(matchingIndex);
-            }
+            else
+                mCurrentOptions.setSubtitleStreamIndex(matchingStream != null ? matchingStream.getIndex() : null);
         } else {
             // No saved preference, use server default
             mCurrentOptions.setSubtitleStreamIndex(response.getMediaSource().getDefaultSubtitleStreamIndex());
