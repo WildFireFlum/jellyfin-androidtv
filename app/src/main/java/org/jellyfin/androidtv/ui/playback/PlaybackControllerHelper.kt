@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jellyfin.androidtv.preference.UserPreferences
 import org.jellyfin.androidtv.ui.playback.segment.MediaSegmentAction
 import org.jellyfin.androidtv.ui.playback.segment.MediaSegmentRepository
 import org.jellyfin.androidtv.util.sdk.end
@@ -56,18 +57,33 @@ fun PlaybackController.disableDefaultSubtitles() {
 fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 	Timber.i("Switching subtitles from index ${mCurrentOptions.subtitleStreamIndex} to $index")
 
-	// Already using this subtitle index
-	if (mCurrentOptions.subtitleStreamIndex == index && !force) return
+	// Forced calls re-apply the stream selected while preparing playback. They are not a user
+	// decision and must not replace the selection remembered for a series.
+	if (!force) {
+		val selection = if (index == -1) {
+			SubtitleSelection(disabled = true)
+		} else {
+			val stream = currentMediaSource.mediaStreams?.firstOrNull { it.type == MediaStreamType.SUBTITLE && it.index == index }
+			if (stream == null) {
+				Timber.w("Failed to find subtitle stream %s", index)
+				return
+			}
+			SubtitleSelection(language = stream.language, title = stream.title ?: stream.displayTitle)
+		}
 
-	// Save subtitle language preference for restoration after NextUp screen
-	val videoQueueManager by fragment.inject<VideoQueueManager>()
-	if (index == -1) {
-		// Use empty string to indicate "subtitles explicitly disabled" vs null meaning "no preference"
-		videoQueueManager.setLastPlayedSubtitleLanguageIsoCode("")
-	} else {
-		val stream = currentMediaSource.mediaStreams?.firstOrNull { it.type == MediaStreamType.SUBTITLE && it.index == index }
-		videoQueueManager.setLastPlayedSubtitleLanguageIsoCode(stream?.language)
+		val videoQueueManager by fragment.inject<VideoQueueManager>()
+		videoQueueManager.setLastPlayedSubtitleSelection(selection)
+
+		val userPreferences by fragment.inject<UserPreferences>()
+		if (userPreferences[UserPreferences.subtitlesRememberSelection]) {
+			getCurrentlyPlayingItem()?.seriesId?.let { seriesId ->
+				userPreferences.setSeriesSubtitleSelection(seriesId, selection)
+			}
+		}
 	}
+
+	// A manual click on the active stream still records that choice for later episodes.
+	if (mCurrentOptions.subtitleStreamIndex == index && !force) return
 
 	// Disable subtitles
 	if (index == -1) {
@@ -96,7 +112,7 @@ fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 		val stream = mediaSource.mediaStreams?.firstOrNull { it.type == MediaStreamType.SUBTITLE && it.index == index }
 		if (stream == null) {
 			Timber.w("Failed to find correct media stream")
-			return setSubtitleIndex(-1)
+			return setSubtitleIndex(-1, force)
 		}
 
 		when {
@@ -136,9 +152,9 @@ fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 						.indexOf(stream)
 						.takeIf { it != -1 }
 
-					if (localIndex == null) {
-						Timber.w("Failed to find local subtitle index")
-						return setSubtitleIndex(-1)
+			if (localIndex == null) {
+				Timber.w("Failed to find local subtitle index")
+				return setSubtitleIndex(-1, force)
 					}
 
 					mVideoManager.mExoPlayer.currentTracks.groups
@@ -147,9 +163,9 @@ fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 						.getOrNull(localIndex)
 				}?.mediaTrackGroup
 
-				if (group == null) {
-					Timber.w("Failed to find correct subtitle group for method ${stream.deliveryMethod}")
-					return setSubtitleIndex(-1)
+			if (group == null) {
+				Timber.w("Failed to find correct subtitle group for method ${stream.deliveryMethod}")
+				return setSubtitleIndex(-1, force)
 				}
 
 				Timber.i("Enabling subtitle group $index via method ${stream.deliveryMethod}")
@@ -165,7 +181,7 @@ fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 
 			stream.deliveryMethod == SubtitleDeliveryMethod.DROP || stream.deliveryMethod == null -> {
 				Timber.i("Dropping subtitles")
-				setSubtitleIndex(-1)
+				setSubtitleIndex(-1, force)
 			}
 		}
 	}
