@@ -11,7 +11,7 @@ class UserSettingPreferences(
 ) : DisplayPreferencesStore(
 	displayPreferencesId = "usersettings",
 	api = api,
-	app = "emby",
+	app = "emby-yf",
 ) {
 	companion object {
 		val skipBackLength = intPreference("skipBackLength", 10_000)

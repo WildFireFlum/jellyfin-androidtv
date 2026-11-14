@@ -1,5 +1,6 @@
 package org.jellyfin.androidtv.util.sdk
 
+import org.jellyfin.androidtv.BuildConfig
 import org.jellyfin.sdk.model.DeviceInfo
 import org.jellyfin.sdk.model.UUID
 import java.security.MessageDigest
@@ -11,7 +12,7 @@ fun DeviceInfo.forUser(userId: UUID) = forUser(userId.toString())
  */
 fun DeviceInfo.forUser(user: String): DeviceInfo = copy(
 	id = MessageDigest.getInstance("SHA-1").run {
-		update("${id}+$user".toByteArray())
+		update("${id}+$user+${BuildConfig.APPLICATION_ID}".toByteArray())
 		digest().joinToString("") { "%02x".format(it) }
 	},
 )
