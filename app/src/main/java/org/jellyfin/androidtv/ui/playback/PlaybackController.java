@@ -655,10 +655,12 @@ public class PlaybackController implements PlaybackControllerNotifiable {
             lastSubtitleSelection = videoQueueManager.getValue().getLastPlayedSubtitleSelection();
 
         if (lastSubtitleSelection != null) {
+            videoQueueManager.getValue().setLastPlayedSubtitleSelection(lastSubtitleSelection);
+
             if (lastSubtitleSelection.getDisabled()) {
                 // User explicitly disabled subtitles
                 mCurrentOptions.setSubtitleStreamIndex(null);
-            } else if (response.getMediaSource().getMediaStreams() != null) {
+            } else if (lastSubtitleSelection.hasPrimarySelection() && response.getMediaSource().getMediaStreams() != null) {
                 // Find subtitle stream matching saved selection, keeping the requested stream if it matches
                 // (e.g. when playback restarts to switch between baked and non-baked subtitles)
                 // Prefer the exact stream (title) over a stream that only matches the language
@@ -666,20 +668,29 @@ public class PlaybackController implements PlaybackControllerNotifiable {
                 Integer matchingIndex = null;
                 Integer languageIndex = null;
                 for (MediaStream stream : response.getMediaSource().getMediaStreams()) {
-                    if (stream.getType() != MediaStreamType.SUBTITLE || !lastSubtitleSelection.matchesLanguage(stream)) continue;
+                    if (stream.getType() != MediaStreamType.SUBTITLE) continue;
 
-                    if (languageIndex == null) languageIndex = stream.getIndex();
-                    if (matchingIndex == null && lastSubtitleSelection.matchesStream(stream)) matchingIndex = stream.getIndex();
+                    boolean languageMatch = lastSubtitleSelection.matchesLanguage(stream);
+                    boolean exactMatch = lastSubtitleSelection.matchesStream(stream);
+                    if (!languageMatch && !exactMatch) continue;
+
+                    if (languageMatch && languageIndex == null) languageIndex = stream.getIndex();
+                    if (exactMatch && matchingIndex == null) matchingIndex = stream.getIndex();
                     if (requestedIndex != null && requestedIndex == stream.getIndex()) {
                         matchingIndex = requestedIndex;
                         break;
                     }
                 }
                 mCurrentOptions.setSubtitleStreamIndex(matchingIndex != null ? matchingIndex : languageIndex);
+            } else {
+                // A secondary-only selection leaves the primary track at the server default.
+                mCurrentOptions.setSubtitleStreamIndex(response.getMediaSource().getDefaultSubtitleStreamIndex());
             }
+            PlaybackControllerHelperKt.applySecondarySubtitle(this, lastSubtitleSelection.getSecondary());
         } else {
             // No saved preference, use server default
             mCurrentOptions.setSubtitleStreamIndex(response.getMediaSource().getDefaultSubtitleStreamIndex());
+            PlaybackControllerHelperKt.applySecondarySubtitle(this, null);
         }
         setDefaultAudioIndex(response);
         Timber.i("default audio index set to %s remote default %s", mDefaultAudioIndex, response.getMediaSource().getDefaultAudioStreamIndex());

@@ -10,6 +10,7 @@ import org.jellyfin.androidtv.preference.constant.BackdropBehavior
 import org.jellyfin.androidtv.preference.constant.BitstreamAudioMode
 import org.jellyfin.androidtv.preference.constant.BufferLength
 import org.jellyfin.androidtv.preference.constant.ClockBehavior
+import org.jellyfin.androidtv.preference.constant.DualSubtitleLayout
 import org.jellyfin.androidtv.preference.constant.HEVCLevel
 import org.jellyfin.androidtv.preference.constant.HdrOverrideMode
 import org.jellyfin.androidtv.preference.constant.NextUpBehavior
@@ -243,6 +244,11 @@ class UserPreferences(context: Context) : SharedPreferenceStore(
 		var subtitlesTextSize = floatPreference("subtitles_text_size", 24f)
 
 		/**
+		 * Secondary subtitles font size.
+		 */
+		var subtitlesSecondaryTextSize = floatPreference("subtitles_secondary_text_size", 18f)
+
+		/**
 		 * Subtitles offset
 		 */
 		var subtitlesOffsetPosition = floatPreference("subtitles_offset_position", 0.08f)
@@ -313,6 +319,11 @@ class UserPreferences(context: Context) : SharedPreferenceStore(
 		 * [getSeriesSubtitleSelection] and [setSeriesSubtitleSelection].
 		 */
 		var subtitlesSeriesSelections = stringPreference("subtitles_series_selections", "")
+
+		/**
+		 * Where to render secondary subtitles, when enabled.
+		 */
+		var subtitlesSecondaryLayout = enumPreference("subtitles_secondary_layout", DualSubtitleLayout.STACKED)
 
 		/**
 		 * Enable the use of software-based codecs.

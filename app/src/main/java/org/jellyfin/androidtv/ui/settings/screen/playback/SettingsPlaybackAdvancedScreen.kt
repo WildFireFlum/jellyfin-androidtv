@@ -34,6 +34,7 @@ import org.jellyfin.androidtv.ui.settings.Routes
 import org.jellyfin.androidtv.ui.settings.compat.rememberPreference
 import org.jellyfin.androidtv.ui.settings.composable.SettingsAsyncActionListButton
 import org.jellyfin.androidtv.ui.settings.composable.SettingsColumn
+import org.jellyfin.androidtv.ui.playback.subtitles.SecondarySubtitleDiagnostics
 import org.jellyfin.androidtv.util.profile.createDeviceProfileReport
 import org.jellyfin.design.Tokens
 import org.jellyfin.sdk.api.client.ApiClient
@@ -337,6 +338,31 @@ fun SettingsPlaybackAdvancedScreen() {
 					Toast.makeText(context, R.string.pref_report_device_profile_failure, Toast.LENGTH_LONG).show()
 				},
 				modifier = Modifier.focusKey("report_device_profile")
+			)
+		}
+
+		item {
+			val api = koinInject<ApiClient>()
+
+			SettingsAsyncActionListButton(
+				headingContent = { Text(stringResource(R.string.pref_report_secondary_subtitles_title)) },
+				captionContent = { Text(stringResource(R.string.pref_report_secondary_subtitles_summary)) },
+				action = {
+					val response by api.clientLogApi.logFile(SecondarySubtitleDiagnostics.createReport())
+					response
+				},
+				onSuccess = { result ->
+					Toast.makeText(
+						context,
+						@SuppressLint("LocalContextGetResourceValueCall")
+						context.getString(R.string.pref_report_device_profile_success, result.fileName),
+						Toast.LENGTH_LONG
+					).show()
+				},
+				onFailure = {
+					Toast.makeText(context, R.string.pref_report_device_profile_failure, Toast.LENGTH_LONG).show()
+				},
+				modifier = Modifier.focusKey("report_secondary_subtitles")
 			)
 		}
 	}

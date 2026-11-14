@@ -11,12 +11,14 @@ import kotlinx.coroutines.withContext
 import org.jellyfin.androidtv.preference.UserPreferences
 import org.jellyfin.androidtv.ui.playback.segment.MediaSegmentAction
 import org.jellyfin.androidtv.ui.playback.segment.MediaSegmentRepository
+import org.jellyfin.androidtv.ui.playback.subtitles.SecondarySubtitleDiagnostics
 import org.jellyfin.androidtv.util.sdk.end
 import org.jellyfin.androidtv.util.sdk.start
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.liveTvApi
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.MediaSegmentDto
+import org.jellyfin.sdk.model.api.MediaStream
 import org.jellyfin.sdk.model.api.MediaStreamType
 import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import org.koin.android.ext.android.inject
@@ -60,7 +62,7 @@ fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 	// Forced calls re-apply the stream selected while preparing playback. They are not a user
 	// decision and must not replace the selection remembered for a series.
 	if (!force) {
-		val selection = if (index == -1) {
+		val primarySelection = if (index == -1) {
 			SubtitleSelection(disabled = true)
 		} else {
 			val stream = currentMediaSource.mediaStreams?.firstOrNull { it.type == MediaStreamType.SUBTITLE && it.index == index }
@@ -72,6 +74,8 @@ fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 		}
 
 		val videoQueueManager by fragment.inject<VideoQueueManager>()
+		val existingSelection = videoQueueManager.getLastPlayedSubtitleSelection()
+		val selection = primarySelection.copy(secondary = existingSelection?.secondary)
 		videoQueueManager.setLastPlayedSubtitleSelection(selection)
 
 		val userPreferences by fragment.inject<UserPreferences>()
@@ -185,6 +189,75 @@ fun PlaybackController.setSubtitleIndex(index: Int, force: Boolean = false) {
 			}
 		}
 	}
+}
+
+fun PlaybackController.getCurrentSubtitleSelection(): SubtitleSelection? {
+	val videoQueueManager by fragment.inject<VideoQueueManager>()
+	return videoQueueManager.getLastPlayedSubtitleSelection()
+}
+
+fun MediaStream.isSecondarySubtitleSupported(itemId: UUID?, mediaSourceId: String?) =
+	type == MediaStreamType.SUBTITLE && when (deliveryMethod) {
+		SubtitleDeliveryMethod.EXTERNAL -> deliveryUrl != null
+		SubtitleDeliveryMethod.EMBED -> itemId != null && mediaSourceId != null
+		else -> false
+	}
+
+fun PlaybackController.setSecondarySubtitleIndex(index: Int) {
+	val stream = currentMediaSource.mediaStreams?.firstOrNull { it.type == MediaStreamType.SUBTITLE && it.index == index }
+	if (index != -1 && stream == null) {
+		Timber.w("Failed to find secondary subtitle stream %s", index)
+		SecondarySubtitleDiagnostics.record("Manual selection failed: stream index=$index was not present in the media source")
+		return
+	}
+	SecondarySubtitleDiagnostics.record("Manual selection: requested index=$index, selected=${SecondarySubtitleDiagnostics.describeStream(stream)}")
+
+	val secondary = stream?.let { SubtitleSelection(language = it.language, title = it.title ?: it.displayTitle) }
+	val currentSelection = getCurrentSubtitleSelection()
+	if (currentSelection == null && secondary == null) {
+		SecondarySubtitleDiagnostics.record("Manual selection cleared without an existing subtitle selection")
+		applySecondarySubtitle(null)
+		return
+	}
+
+	val selection = (currentSelection ?: SubtitleSelection()).copy(secondary = secondary)
+	val videoQueueManager by fragment.inject<VideoQueueManager>()
+	videoQueueManager.setLastPlayedSubtitleSelection(selection)
+
+	val userPreferences by fragment.inject<UserPreferences>()
+	if (userPreferences[UserPreferences.subtitlesRememberSelection]) {
+		getCurrentlyPlayingItem()?.seriesId?.let { seriesId ->
+			userPreferences.setSeriesSubtitleSelection(seriesId, selection)
+		}
+	}
+
+	applySecondarySubtitle(secondary)
+}
+
+/**
+ * Attach the media stream for the secondary subtitle selection to the [VideoManager]. Streams that
+ * are externally available or convertible by Jellyfin are rendered independently.
+ */
+fun PlaybackController.applySecondarySubtitle(secondary: SubtitleSelection?) {
+	val stream = secondary?.findMatchingStream(currentMediaSource.mediaStreams)
+	val itemId = getCurrentlyPlayingItem()?.id
+	val mediaSourceId = currentMediaSource.id
+	SecondarySubtitleDiagnostics.record(
+		"Apply saved selection: language=${secondary?.language ?: "none"}, title=${secondary?.title ?: "none"}, " +
+			"resolved=${SecondarySubtitleDiagnostics.describeStream(stream)}"
+	)
+	if (stream?.deliveryMethod == SubtitleDeliveryMethod.EMBED) {
+		SecondarySubtitleDiagnostics.record("Embedded stream will be requested from Jellyfin as WebVTT")
+	}
+	if (stream != null && !stream.isSecondarySubtitleSupported(itemId, mediaSourceId)) {
+		SecondarySubtitleDiagnostics.record("Resolved stream cannot be independently rendered")
+	}
+
+	mVideoManager.setSecondarySubtitleStream(
+		stream,
+		itemId,
+		mediaSourceId,
+	)
 }
 
 fun PlaybackController.applyMediaSegments(

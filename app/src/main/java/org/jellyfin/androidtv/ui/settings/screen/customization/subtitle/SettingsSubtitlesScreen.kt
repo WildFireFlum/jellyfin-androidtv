@@ -45,7 +45,9 @@ fun SettingsSubtitlesScreen() {
 	var subtitlesTextColor by rememberPreference(userPreferences, UserPreferences.subtitlesTextColor)
 	var subtitleTextStrokeColor by rememberPreference(userPreferences, UserPreferences.subtitleTextStrokeColor)
 	var subtitlesTextSize by rememberPreference(userPreferences, UserPreferences.subtitlesTextSize)
+	var subtitlesSecondaryTextSize by rememberPreference(userPreferences, UserPreferences.subtitlesSecondaryTextSize)
 	var subtitlesOffsetPosition by rememberPreference(userPreferences, UserPreferences.subtitlesOffsetPosition)
+	var subtitlesSecondaryLayout by rememberPreference(userPreferences, UserPreferences.subtitlesSecondaryLayout)
 
 	SettingsColumn {
 		item {
@@ -106,6 +108,42 @@ fun SettingsSubtitlesScreen() {
 			val interactionSource = remember { MutableInteractionSource() }
 
 			ListControl(
+				headingContent = { Text(stringResource(R.string.pref_secondary_subtitles_size)) },
+				interactionSource = interactionSource,
+				modifier = Modifier.focusKey("secondary_subtitles_size")
+			) {
+				Row(
+					verticalAlignment = Alignment.CenterVertically,
+				) {
+					RangeControl(
+						modifier = Modifier
+							.height(4.dp)
+							.weight(1f),
+						interactionSource = interactionSource,
+						min = 8f,
+						max = 48f,
+						markers = listOf(UserPreferences.subtitlesSecondaryTextSize.defaultValue),
+						stepForward = 1f,
+						value = subtitlesSecondaryTextSize,
+						onValueChange = { subtitlesSecondaryTextSize = it }
+					)
+
+					Spacer(Modifier.width(Tokens.Space.spaceSm))
+
+					Box(
+						modifier = Modifier.sizeIn(minWidth = 32.dp),
+						contentAlignment = Alignment.CenterEnd
+					) {
+						Text(subtitlesSecondaryTextSize.roundToInt().toString())
+					}
+				}
+			}
+		}
+
+		item {
+			val interactionSource = remember { MutableInteractionSource() }
+
+			ListControl(
 				headingContent = { Text(stringResource(R.string.pref_subtitles_weight)) },
 				captionContent = {
 					val normalizedValue = subtitlesTextWeight
@@ -143,6 +181,16 @@ fun SettingsSubtitlesScreen() {
 					onValueChange = { subtitlesTextWeight = it.toInt() }
 				)
 			}
+		}
+
+		item {
+			ListButton(
+				headingContent = { Text(stringResource(R.string.pref_subtitles_secondary_layout)) },
+				captionContent = { Text(stringResource(R.string.pref_subtitles_secondary_layout_description)) },
+				trailingContent = { Text(stringResource(subtitlesSecondaryLayout.nameRes)) },
+				onClick = { router.push(Routes.CUSTOMIZATION_SUBTITLES_SECONDARY_LAYOUT) },
+				modifier = Modifier.focusKey(Routes.CUSTOMIZATION_SUBTITLES_SECONDARY_LAYOUT)
+			)
 		}
 
 		item {

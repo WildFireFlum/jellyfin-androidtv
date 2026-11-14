@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.jellyfin.androidtv.preference.UserPreferences
 import org.jellyfin.sdk.model.api.MediaStream
+import org.jellyfin.sdk.model.api.MediaStreamType
 import java.util.UUID
 
 /**
@@ -23,7 +24,17 @@ data class SubtitleSelection(
 	 */
 	val title: String? = null,
 	val disabled: Boolean = false,
+	/**
+	 * Secondary subtitle track rendered together with the primary one.
+	 */
+	val secondary: SubtitleSelection? = null,
 ) {
+	/**
+	 * Whether this record explicitly controls the primary subtitle track. A record with only a
+	 * secondary selection leaves the primary track at the server default.
+	 */
+	fun hasPrimarySelection() = disabled || language != null || title != null
+
 	/**
 	 * Whether the language of the selection matches the stream. Used to find fallback candidates.
 	 */
@@ -33,7 +44,25 @@ data class SubtitleSelection(
 	 * Whether the selection matches the stream exactly, using the stream title in addition to the
 	 * language.
 	 */
-	fun matchesStream(stream: MediaStream) = matchesLanguage(stream) && (title == null || title == stream.title || title == stream.displayTitle)
+	fun matchesStream(stream: MediaStream) = title != null &&
+		(title == stream.title || title == stream.displayTitle) &&
+		(language == null || language == stream.language)
+
+	fun findMatchingStream(streams: List<MediaStream>?): MediaStream? {
+		if (disabled) return null
+
+		val subtitles = streams.orEmpty().filter { it.type == MediaStreamType.SUBTITLE }
+		val exactMatch = title?.let { savedTitle ->
+			subtitles.firstOrNull {
+				(it.title == savedTitle || it.displayTitle == savedTitle) &&
+					(language == null || it.language == language)
+			}
+		}
+
+		return exactMatch ?: language?.let { savedLanguage ->
+			subtitles.firstOrNull { it.language == savedLanguage }
+		}
+	}
 }
 
 private val json = Json { ignoreUnknownKeys = true }

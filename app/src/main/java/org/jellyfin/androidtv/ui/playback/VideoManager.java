@@ -10,6 +10,7 @@ import android.media.audiofx.Equalizer;
 import android.net.Uri;
 import android.os.Handler;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
 
@@ -29,6 +30,7 @@ import androidx.media3.common.TrackGroup;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.Tracks;
+import androidx.media3.common.text.CueGroup;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.datasource.HttpDataSource;
@@ -45,12 +47,15 @@ import androidx.media3.extractor.ts.TsExtractor;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.SubtitleView;
 
 import org.jellyfin.androidtv.R;
 import org.jellyfin.androidtv.data.compat.StreamInfo;
 import org.jellyfin.androidtv.preference.UserPreferences;
 import org.jellyfin.androidtv.preference.constant.BufferLength;
+import org.jellyfin.androidtv.preference.constant.DualSubtitleLayout;
 import org.jellyfin.androidtv.preference.constant.ZoomMode;
+import org.jellyfin.androidtv.ui.playback.subtitles.SecondarySubtitleController;
 import org.jellyfin.sdk.api.client.ApiClient;
 import org.jellyfin.sdk.model.api.MediaStream;
 import org.jellyfin.sdk.model.api.MediaStreamType;
@@ -61,6 +66,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import io.github.peerless2012.ass.media.AssHandler;
 import io.github.peerless2012.ass.media.AssHandlerConfig;
@@ -92,6 +98,7 @@ public class VideoManager {
 
     private final UserPreferences userPreferences = KoinJavaComponent.get(UserPreferences.class);
     private final HttpDataSource.Factory exoPlayerHttpDataSourceFactory = KoinJavaComponent.get(HttpDataSource.Factory.class);
+    private SecondarySubtitleController secondarySubtitleController;
 
     public VideoManager(@NonNull Activity activity, @NonNull View view, @NonNull PlaybackOverlayFragmentHelper helper) {
         mActivity = activity;
@@ -138,7 +145,22 @@ public class VideoManager {
             mExoPlayerView.getSubtitleView().addView(new AssSubtitleView(mActivity, assHandler));
         }
 
+        SubtitleView secondarySubtitleView = new SubtitleView(mActivity);
+        // Keep the independent renderer outside Media3's managed primary SubtitleView.
+        mExoPlayerView.addView(secondarySubtitleView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        secondarySubtitleController = new SecondarySubtitleController(
+                mActivity,
+                KoinJavaComponent.get(ApiClient.class),
+                secondarySubtitleView,
+                userPreferences);
+
         mExoPlayer.addListener(new Player.Listener() {
+            @Override
+            public void onCues(@NonNull CueGroup cueGroup) {
+                if (secondarySubtitleController != null) secondarySubtitleController.onPrimaryCues(cueGroup.cues);
+            }
+
             @Override
             public void onPlayerError(@NonNull PlaybackException error) {
                 Timber.e("***** Got error from player");
@@ -608,11 +630,29 @@ public class VideoManager {
 
     private void releasePlayer() {
         _helper.setScreensaverLock(false);
+        if (secondarySubtitleController != null) secondarySubtitleController.release();
         if (mExoPlayer != null) {
             mExoPlayerView.setPlayer(null);
             mExoPlayer.release();
             mExoPlayer = null;
         }
+    }
+
+    public void setSecondarySubtitleStream(@Nullable MediaStream stream, @Nullable UUID itemId, @Nullable String mediaSourceId) {
+        applyPrimarySubtitleLayout(stream != null && userPreferences.get(UserPreferences.Companion.getSubtitlesSecondaryLayout()) == DualSubtitleLayout.SIDE);
+        if (secondarySubtitleController != null) secondarySubtitleController.setStream(stream, itemId, mediaSourceId);
+    }
+
+    private void applyPrimarySubtitleLayout(boolean sideBySide) {
+        int width = mExoPlayerView.getWidth();
+        if (width <= 0) width = mActivity.getResources().getDisplayMetrics().widthPixels;
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                sideBySide ? width / 2 : FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                sideBySide ? Gravity.START : Gravity.CENTER
+        );
+        mExoPlayerView.getSubtitleView().setLayoutParams(params);
     }
 
     int normalWidth;
@@ -662,8 +702,10 @@ public class VideoManager {
         progressLoop = new Runnable() {
             @Override
             public void run() {
+                if (secondarySubtitleController != null && mExoPlayer != null)
+                    secondarySubtitleController.updatePosition(mExoPlayer.getCurrentPosition());
                 if (mPlaybackControllerNotifiable != null) mPlaybackControllerNotifiable.onProgress();
-                mHandler.postDelayed(this, 500);
+                mHandler.postDelayed(this, secondarySubtitleController != null && secondarySubtitleController.hasSecondarySubtitle() ? 100 : 500);
             }
         };
         mHandler.post(progressLoop);

@@ -578,6 +578,8 @@
     <string name="pref_report_device_profile_summary">Upload a troubleshooting document to the Jellyfin server with information about playback capabilities</string>
     <string name="pref_report_device_profile_success">Document submitted as %1$s</string>
     <string name="pref_report_device_profile_failure">Failed to submit document. Your Jellyfin server may prohibit client logs.</string>
+    <string name="pref_report_secondary_subtitles_title">Report secondary subtitle diagnostics</string>
+    <string name="pref_report_secondary_subtitles_summary">Upload the recent secondary subtitle selection, download, parsing, and display trace to the Jellyfin server. The report excludes subtitle text and access tokens.</string>
     <string name="fast_forward">Fast forward</string>
     <string name="rewind">Rewind</string>
     <string name="preference_enable_pgs">Direct play PGS subtitles</string>
@@ -585,6 +587,13 @@
     <string name="pref_burn_subtitles_when_transcoding_description">Always burn subtitles into the video during transcoding. This can fix subtitle sync issues but disables subtitle customization.</string>
     <string name="pref_subtitles_remember_selection">Remember subtitle selection</string>
     <string name="pref_subtitles_remember_selection_description">Start episodes of the same series with the previously selected subtitles. Preferably the exact same track, falling back to a track with the same language.</string>
+    <string name="lbl_secondary_subtitle_track">Secondary subtitle track</string>
+    <string name="pref_subtitles_secondary_layout">Secondary subtitle layout</string>
+    <string name="pref_subtitles_secondary_layout_description">Position of the secondary subtitle track, selected with the subtitle track button in the player.</string>
+    <string name="pref_secondary_subtitles_size">Secondary subtitle size</string>
+    <string name="pref_subtitle_layout_stacked">Above primary subtitles</string>
+    <string name="pref_subtitle_layout_top">Near top of screen</string>
+    <string name="pref_subtitle_layout_side">Side by side, right half</string>
     <string name="speech_error_no_permission">No permission to use the microphone. Please enable it in system settings.</string>
     <string name="speech_error_unavailable">Speech recognition is unavailable on your device.</string>
     <string name="speech_error_unknown">An unexpected error occurred during speech recognition.</string>
